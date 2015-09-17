@@ -34,6 +34,7 @@ sub checkFile {
 				$tog = 1;
 				print "\n$fn\n";
 			}
+			$line =~ s/^\s+|\s+$//g;
 			print "[$ln]\t$line\n";
 		}
 		$ln++;
