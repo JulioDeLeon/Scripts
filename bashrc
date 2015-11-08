@@ -103,11 +103,11 @@ export PATH=$PATH:/home/jleon/Scripts
 export VISUAL=vim
 export EDITOR="$VISUAL"
 
-PATH="/home/jleon/perl5/bin${PATH+:}${PATH}"; export PATH;
-PERL5LIB="/home/jleon/perl5/lib/perl5${PERL5LIB+:}${PERL5LIB}"; export PERL5LIB;
-PERL_LOCAL_LIB_ROOT="/home/jleon/perl5${PERL_LOCAL_LIB_ROOT+:}${PERL_LOCAL_LIB_ROOT}"; export PERL_LOCAL_LIB_ROOT;
-PERL_MB_OPT="--install_base \"/home/jleon/perl5\""; export PERL_MB_OPT;
-PERL_MM_OPT="INSTALL_BASE=/home/jleon/perl5"; export PERL_MM_OPT;
+#PATH="/home/j/perl5/bin${PATH+:}${PATH}"; export PATH;
+#PERL5LIB="/home/j/perl5/lib/perl5${PERL5LIB+:}${PERL5LIB}"; export PERL5LIB;
+#PERL_LOCAL_LIB_ROOT="/home/j/perl5${PERL_LOCAL_LIB_ROOT+:}${PERL_LOCAL_LIB_ROOT}"; export PERL_LOCAL_LIB_ROOT;
+#PERL_MB_OPT="--install_base \"/home/j/perl5\""; export PERL_MB_OPT;
+#PERL_MM_OPT="INSTALL_BASE=/home/j/perl5"; export PERL_MM_OPT;
 
 
 export PS1="$ " 

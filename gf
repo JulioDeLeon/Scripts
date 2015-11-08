@@ -12,7 +12,7 @@ sub checkExt {
 	my($fn) = @_;
 	my @appr = [qr/\.c$/, qr/\.cpp$/, qr/\.pl$/, qr/\.txt$/, qr/\.h$/, qr/\.java$/, qr/\.hs$/, qr/\.hs$/, qr/\.py$/];
 	my @match;
-
+	print "checking $fn\n";
 	given($fn){
 		when(@appr){
 			return 1;
@@ -48,13 +48,13 @@ sub handleDir {
 	chdir($dh);
 	foreach my $entry (readdir $dh){
 		next if $entry =~ /^\./;
-		
+		next if -B $entry;	
 		if(-d $entry){
 			&handleDir ($dn."/".$entry);
 		}elsif(-f $entry){
-			if(&checkExt($entry)){
+		#	if(&checkExt($entry)){
 				&checkFile($dn."/".$entry);
-			}
+		#	}
 		}
 	}
 	chdir("..");
