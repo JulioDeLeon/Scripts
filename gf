@@ -12,7 +12,6 @@ sub checkExt {
 	my($fn) = @_;
 	my @appr = [qr/\.c$/, qr/\.cpp$/, qr/\.pl$/, qr/\.txt$/, qr/\.h$/, qr/\.java$/, qr/\.hs$/, qr/\.hs$/, qr/\.py$/];
 	my @match;
-	print "checking $fn\n";
 	given($fn){
 		when(@appr){
 			return 1;
@@ -48,13 +47,16 @@ sub handleDir {
 	chdir($dh);
 	foreach my $entry (readdir $dh){
 		next if $entry =~ /^\./;
-		next if -B $entry;	
-		if(-d $entry){
+
+		if( 1 == (-d $entry)){
 			&handleDir ($dn."/".$entry);
-		}elsif(-f $entry){
-		#	if(&checkExt($entry)){
-				&checkFile($dn."/".$entry);
-		#	}
+		}elsif( -f $entry){
+			#if(&checkExt($entry)){
+			next if (-B $entry);
+			next if $entry =~ /\.bundle$/; #VMWare's bundle breaks this, so skip for now. 
+			next if $entry =~ /\.run$/; #nvidia's .run
+			&checkFile($dn."/".$entry);
+			#}
 		}
 	}
 	chdir("..");
