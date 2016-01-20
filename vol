@@ -1,0 +1,30 @@
+#!/bin/perl -w
+
+use strict;
+use warnings;
+use feature 'switch';
+
+die "Expected arguement for volume" if @ARGV < 1; 
+
+my($option) = @ARGV;
+
+sub main {
+	given($option){
+		when("up"){
+			system("pactl set-sink-mute 1 0");
+			system("pactl set-sink-volume 1 +5%");
+		} when("down") {
+			system("pactl set-sink-mute 1 0");
+			system("pactl set-sink-volume 1 -5%");
+		} when("mute") {
+			system("pactl set-sink-mute 1 toggle");
+		} default {
+			print "Incorrect input";
+			return 0;
+		}
+	}
+
+	return 1;
+}
+
+&main;
