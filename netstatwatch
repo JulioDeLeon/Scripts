@@ -90,7 +90,11 @@ sub startWrapper {
 	print "Capturing...";
 	while(1){
 		&clearConnTrack;
+<<<<<<< HEAD
 		die "Failed to capture" if system("netstat > /tmp/capture.tmp");
+=======
+		die "Failed to capture" if system("netstat -n > /tmp/capture.tmp");
+>>>>>>> b1029fb2e3f24bcdef60495a9ebd5b910d9a8397
 		open $fh, '<', "/tmp/capture.tmp"  or die "Could not open temp file";
 		while(<$fh>){
 			next if ( !($_ =~ qr/^tcp/) and !($_ =~ qr/^udp/));
