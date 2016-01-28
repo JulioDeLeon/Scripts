@@ -1,0 +1,120 @@
+#!/usr/bin/perl -w
+#added
+use strict;
+use warnings;
+
+package ConnTrackInfo;
+use Carp;
+
+sub new {
+	my $class = shift;
+	my $self = {@_};
+	croak "bad args" unless 
+		defined $self->{name} and
+		defined $self->{conncount} and
+		defined $self->{connections};
+	return bless $self, $class;
+}
+
+sub name {
+	my $self = shift;
+	return $self->{name};
+}
+
+sub printInfo {
+	my $self = shift;
+	print "$self->{name}\t$self->{conncount}";
+}
+
+package MAIN;
+
+my $DEBUG = 0;
+
+my %conntrack;
+
+
+sub cleanup{
+	my @temps = "capture.tmp";
+	unlink @temps;
+}
+
+sub parseLine{
+	my $line = $_;
+	my @toks = split(' ', $line);
+#	print "Proto:$toks[0]\n";
+#	print "Recv-Q:$toks[1]\n";
+#	print "Send-Q:$toks[2]\n";
+#	print "LocalAddress:$toks[3]\n";
+#	print "ForeignAddres:$toks[4]\n";
+#	print "State:$toks[5]\n";
+
+#	Add the proper values to the table;
+	my ($client, $port) = split(':', $toks[3]);
+	chomp($client);
+	$client =~ s/\.lan$//g;
+	if(defined $conntrack{$client}){
+		my $temp = $conntrack{$client};
+		$temp->{conncount}++;
+		push($temp->{connections}, $toks[4]);
+	} else {
+		my $newinfo = ConnTrackInfo->new(
+			name => $client, 
+			conncount => 1, 
+			connections => [$toks[4]] );
+		$conntrack{$client} = $newinfo;	
+	}
+}
+
+sub printConnTrack{
+	print "Device\t\tConnections\n";
+	my $total = 0;
+	foreach my $key (keys %conntrack){
+		my $info = $conntrack{$key};
+		print "$info->{name}\t\t$info->{conncount}\n";
+		$total++;
+	}
+	print "list total: $total\n";
+}
+
+sub clearConnTrack {
+	my ($key, $val);
+	while(( $key, $val) = each %conntrack ) {
+	  delete $conntrack{$key};
+}
+}
+
+sub startWrapper {
+	&cleanup;
+	my $fh;
+	system("clear");
+	print "Capturing...";
+	while(1){
+		&clearConnTrack;
+		die "Failed to capture" if system("netstat > /tmp/capture.tmp");
+		open $fh, '<', "/tmp/capture.tmp"  or die "Could not open temp file";
+		while(<$fh>){
+			next if ( !($_ =~ qr/^tcp/) and !($_ =~ qr/^udp/));
+			&parseLine($_);
+		}
+	
+	
+		system("clear");	
+		&printConnTrack;
+		close $fh;
+		sleep(1);
+	}
+	&cleanup;
+
+}
+
+sub listenOn {
+
+}
+
+sub main {
+	&startWrapper;
+}
+
+&main;
+
+
