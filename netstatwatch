@@ -3,6 +3,8 @@
 use strict;
 use warnings;
 
+
+#==============================================================================
 package ConnTrackInfo;
 use Carp;
 
@@ -25,13 +27,13 @@ sub printInfo {
 	my $self = shift;
 	print "$self->{name}\t$self->{conncount}";
 }
-
+#==============================================================================
 package MAIN;
 
 my $DEBUG = 0;
-
 my %conntrack;
-
+my $SORTED_FLAG;
+my $RESOLVE_FLAG;
 
 sub cleanup{
 	my @temps = "capture.tmp";
@@ -40,6 +42,7 @@ sub cleanup{
 
 sub parseLine{
 	my $line = $_;
+	return if $line =~ /^\w+$/;
 	my @toks = split(' ', $line);
 #	print "Proto:$toks[0]\n";
 #	print "Recv-Q:$toks[1]\n";
@@ -110,7 +113,9 @@ sub startWrapper {
 sub listenOn {
 
 }
-
+#==============================================================================
+#==================================MAIN========================================
+#==============================================================================
 sub main {
 	&startWrapper;
 }
