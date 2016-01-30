@@ -29,7 +29,7 @@ sub printInfo {
 }
 #==============================================================================
 package MAIN;
-
+use Socket;
 my $DEBUG = 0;
 my %conntrack;
 my $SORTED_FLAG;
@@ -40,42 +40,69 @@ sub cleanup{
 	unlink @temps;
 }
 
+sub isValidIP {
+# 	will check for both ipv6 or ipv4
+#	first ipv4
+#	now ipv6
+}
+
 sub parseLine{
 	my $line = $_;
 	return if $line =~ /^\w+$/;
-	my @toks = split(' ', $line);
+#	my @toks = split(' ', $line);
 #	print "Proto:$toks[0]\n";
 #	print "Recv-Q:$toks[1]\n";
 #	print "Send-Q:$toks[2]\n";
 #	print "LocalAddress:$toks[3]\n";
 #	print "ForeignAddres:$toks[4]\n";
 #	print "State:$toks[5]\n";
-
+	my($proto, $recvq, $sendq, $localaddr, $foreignaddr, $state) =  split(' ', $line);
 #	Add the proper values to the table;
-	my ($client, $port) = split(':', $toks[3]);
+#	my ($client, $port) = split(':', $toks[3]);
+	my $client = $localaddr;
+	my( $ip, $port) = 0;
 	chomp($client);
 	$client =~ s/\.lan$//g;
-	if(defined $conntrack{$client}){
-		my $temp = $conntrack{$client};
+	
+	if( $client =~ m/:[0-9]+$/){
+		$ip = $`;
+		$port = $&;
+		chomp($ip);
+		chomp($port);
+	}else{
+		return;
+	}
+	
+	if(defined $conntrack{$ip}){
+		my $temp = $conntrack{$ip};
 		$temp->{conncount}++;
-		push($temp->{connections}, $toks[4]);
+		push($temp->{connections}, $foreignaddr);
 	} else {
 		my $newinfo = ConnTrackInfo->new(
-			name => $client, 
+			name => $ip, 
 			conncount => 1, 
-			connections => [$toks[4]] );
-		$conntrack{$client} = $newinfo;	
+			connections => [$foreignaddr] );
+		$conntrack{$ip} = $newinfo;	
 	}
 }
 
+sub compByConnections {
+	$conntrack{$b}->{conncount} <=> $conntrack{$a}->{conncount};
+}
+
 sub printConnTrack{
-	print "Device\t\tConnections\n";
+	print "Device" . ("\t" x 6) . "Connections\n";
 	my $total = 0;
-	foreach my $key (keys %conntrack){
+	foreach my $key (sort compByConnections (keys %conntrack)){
 		my $info = $conntrack{$key};
-		print "$info->{name}\t\t$info->{conncount}\n";
+		print "$info->{name}";
+		print "\t" x (7- (length($key)/8) );
+		
+		print "$info->{conncount}\n";
+
 		$total++;
 	}
+	
 	print "list total: $total\n";
 }
 
@@ -93,7 +120,7 @@ sub startWrapper {
 	print "Capturing...";
 	while(1){
 		&clearConnTrack;
-		die "Failed to capture" if system("netstat -n > /tmp/capture.tmp");
+		die "Failed to capture" if system("netstat -Wn > /tmp/capture.tmp");
 		open $fh, '<', "/tmp/capture.tmp"  or die "Could not open temp file";
 		while(<$fh>){
 			next if ( !($_ =~ qr/^tcp/) and !($_ =~ qr/^udp/));
@@ -110,6 +137,7 @@ sub startWrapper {
 
 }
 
+<<<<<<< HEAD
 sub listenOn {
 
 }
