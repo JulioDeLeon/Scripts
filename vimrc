@@ -3,7 +3,6 @@
 """"""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
 
 """ General options
-start " Start in Insertion mode
 syntax enable " Enable syntax highlights
 set ttyfast " Faster refraw
 set mouse=nv " Mouse activated in Normal and Visual Mode
