@@ -96,14 +96,27 @@ sub checkFile {
   close $fh;
 }
 
+sub shouldSkip {
+  my ($entry, @list) =  @_;
+
+    my $skip = -1;
+    foreach my $key (@list) {
+      my $pattern = qr/$key/i;
+      ($skip = 1) if ($entry =~ /$pattern/);
+    }
+  
+  return $skip;
+}
+
 sub handleDir {
   my($dn) = @_;
   opendir (my $dh, $dn) or die "Could not open $dn";
   chdir($dh);
   foreach my $entry (readdir $dh){
     next if $entry =~ /^\./;
+    next if 1 == shouldSkip($entry, (keys %ignores));
     next if (exists $ignores{$entry});
-    if( 1 == (-d $entry)){
+        if( 1 == (-d $entry)){
       &handleDir ($dn."/".$entry);
     }elsif( -f $entry){
 #if(&checkExt($entry)){
