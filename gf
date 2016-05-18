@@ -8,9 +8,24 @@ use Cwd;
 use feature 'switch';
 
 die "Expected search term" if @ARGV < 1;
+my($term, %ignores, $fsym);
 
 sub printHelp {
   print "Help\n"
+}
+
+sub lookupIgnoreFile {
+  my @igfile = ( $ENV{"HOME"}."/\.gfignore", "/etc/gfignore");
+  foreach my $file (@igfile) {
+    if( -e $file ) {
+      open(my $fh, "<", $file);
+      foreach my $line (<$fh>){
+        chomp($line);
+        $ignores{$line} = 1;
+      }
+      close $fh;
+    }
+  }     
 }
 
 sub processArgs {
@@ -18,6 +33,8 @@ sub processArgs {
   my $argc = @_;
   my $retTerm = undef;
   my %ignores;
+  my $follow = -1;
+
   for( my $i = 0; $i < $argc; $i++) {
     if( $args[$i] eq "-i" ){
       if( $i != ($argc - 1)){ 
@@ -29,6 +46,8 @@ sub processArgs {
     } elsif( $args[$i] eq "-h" ){
       &printHelp;
       exit(0);
+    } elsif( $args[$i] eq "-fs") {
+      $follow = 1;
     } else {
       if( $retTerm eq undef){
         $retTerm = $args[$i];
@@ -37,23 +56,24 @@ sub processArgs {
       }
     }
   }
-  return ($retTerm, %ignores);
+  return ($retTerm, %ignores, $follow);
 }
 
-my($term, %ignores) = processArgs(@ARGV);
+($term, %ignores, $fsym) = processArgs(@ARGV);
+&lookupIgnoreFile;
 
 sub checkExt {
-	my($fn) = @_;
-	my @appr = [qr/\.c$/, qr/\.cpp$/, qr/\.pl$/, qr/\.txt$/, qr/\.h$/, qr/\.java$/, qr/\.hs$/, qr/\.hs$/, qr/\.py$/];
-	my @match;
-	given($fn){
-		when(@appr){
-			return 1;
-		}
-		default{
-			return 0;
-		}
-	}
+  my($fn) = @_;
+  my @appr = [qr/\.c$/, qr/\.cpp$/, qr/\.pl$/, qr/\.txt$/, qr/\.h$/, qr/\.java$/, qr/\.hs$/, qr/\.hs$/, qr/\.py$/];
+  my @match;
+  given($fn){
+    when(@appr){
+      return 1;
+    }
+    default{
+      return 0;
+    }
+  }
 }
 
 sub printStr {
@@ -116,16 +136,12 @@ sub handleDir {
     next if $entry =~ /^\./;
     next if 1 == shouldSkip($entry, (keys %ignores));
     next if (exists $ignores{$entry});
-        if( 1 == (-d $entry)){
+    next if (-l $entry && $fsym == -1);
+    if( 1 == (-d $entry)){
       &handleDir ($dn."/".$entry);
     }elsif( -f $entry){
-#if(&checkExt($entry)){
-  next if (-B $entry);
-  next if $entry =~ /\.a$/;
-  next if $entry =~ /\.bundle$/; #VMWare's bundle breaks this, so skip for now. 
-    next if $entry =~ /\.run$/; #nvidia's .run
-    &checkFile($dn."/".$entry);
-#}
+      next if (-B $entry);
+      &checkFile($dn."/".$entry);
     }
   }
   chdir("..");
