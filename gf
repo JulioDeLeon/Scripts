@@ -2,6 +2,7 @@
 use strict;
 use warnings;
 use File::stat;
+use Term::ANSIColor;
 use Cwd;
 use feature 'switch';
 
@@ -28,13 +29,22 @@ sub checkFile {
 	open(my $fh, "<", $fn);
 	foreach my $line (<$fh>){
 		chomp($line);
-		if($line =~ /$term/){
-			if($tog == 0){
+		if($line =~ /$term/p){
+			my $pre = ${^PREMATCH};
+                        my $mat = ${^MATCH};
+                        my $pos = ${^POSTMATCH};
+                        if($tog == 0){
 				$tog = 1;
 				print "\n$fn\n";
 			}
 			$line =~ s/^\s+|\s+$//g;
-			print "[$ln]\t$line\n";
+			#print "[$ln]\t$line\n";
+                        print "[$ln]\t$pre";
+                        print color("bold red");
+                        print " $mat ";
+                        print color("reset");
+                        print "$pos\n"
+
 		}
 		$ln++;
 	}
@@ -53,6 +63,7 @@ sub handleDir {
 		}elsif( -f $entry){
 			#if(&checkExt($entry)){
 			next if (-B $entry);
+                        next if $entry =~ /\.a$/;
 			next if $entry =~ /\.bundle$/; #VMWare's bundle breaks this, so skip for now. 
 			next if $entry =~ /\.run$/; #nvidia's .run
 			&checkFile($dn."/".$entry);
