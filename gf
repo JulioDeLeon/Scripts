@@ -21,7 +21,13 @@ sub lookupIgnoreFile {
       open(my $fh, "<", $file);
       foreach my $line (<$fh>){
         chomp($line);
-        $ignores{$line} = 1;
+        if( $line =~ /^source/p){
+          my $tar = ${^POSTMATCH};
+          $tar =~ s/^\s+|\s+$//g;
+          push(@igfile, $tar);
+        } else {
+          $ignores{$line} = 1;
+        }
       }
       close $fh;
     }
