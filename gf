@@ -8,10 +8,13 @@ use Cwd;
 use feature 'switch';
 
 die "Expected search term" if @ARGV < 1;
-my($term, %ignores, $fsym);
+my($term, %ignores, $fsym, %seen);
 
 sub printHelp {
-  print "Help\n"
+  print "Usage\t gf <search term> [-i <file/regex>] [-fs]\n";
+  print "search term\tThis term will be targeted as gf will search through the file system below";
+  print "-i\tFile name or regular expression will represent file names to ignore";
+  print "-fs\tUsing this flag will force gf to follow symbolic links. Use at your own risk\n";
 }
 
 sub lookupIgnoreFile {
@@ -109,7 +112,7 @@ sub checkFile {
     if($line =~ /$term/p){
       if($tog == 0){
         $tog = 1;
-        print "\n$fn\n";
+        print "$fn\n";
       }
       $line =~ s/^\s+|\s+$//g;
       print "[$ln]\t";
@@ -119,6 +122,7 @@ sub checkFile {
     }
     $ln++;
   }
+  print "\n" if $tog == 1;
   close $fh;
 }
 
@@ -134,20 +138,53 @@ sub shouldSkip {
   return $skip;
 }
 
+sub checkLink {
+  my ($dn, $entry) = @_;
+  my $abs = $dn."/".$entry;
+  $abs =~ s/^\/\//\//g;
+  if(-l $entry){
+    my $rlink = readlink $entry;
+    if( !($rlink =~ /^\//)) {
+      $rlink = $dn."/".$rlink;
+    }
+    if(not exists $seen{$rlink}){
+      $seen{$rlink} = 1;
+      $seen{$abs} = 1;
+    }
+  }
+}
+
 sub handleDir {
   my($dn) = @_;
   opendir (my $dh, $dn) or die "Could not open $dn";
   chdir($dh);
   foreach my $entry (readdir $dh){
+    my $abs = $dn."/".$entry;
+    $abs =~ s/^\/\//\//g;
     next if $entry =~ /^\./;
     next if 1 == shouldSkip($entry, (keys %ignores));
     next if (exists $ignores{$entry});
-    next if (-l $entry && $fsym == -1);
+    next if (exists $seen{$abs});
+    if ( not -r $entry){
+      print color("bold yellow");
+      print "lack permissions to open $abs\n";
+      print color("reset");
+      next;
+    }
+
+    #check for recursive links
+    if(-l $entry){
+      my $link = readlink $entry;
+      next if $link eq ".";
+    }
+    #next if (-l $entry);
     if( 1 == (-d $entry)){
-      &handleDir ($dn."/".$entry);
+      &checkLink($dn, $entry);
+      &handleDir ($abs);
     }elsif( -f $entry){
+      &checkLink($dn, $entry);
       next if (-B $entry);
-      &checkFile($dn."/".$entry);
+      &checkFile($abs);
     }
   }
   chdir("..");
