@@ -8,27 +8,22 @@ use Cwd;
 use feature 'switch';
 
 die "Expected search term" if @ARGV < 1;
-my($term, %ignores, $fsym, %seen);
+my($term, %ignores, %targets, %seen);
 
-sub printHelp {
-  print "Usage\t gf <search term> [-i <file/regex>] [-fs]\n";
-  print "search term\tThis term will be targeted as gf will search through the file system below";
-  print "-i\tFile name or regular expression will represent file names to ignore";
-  print "-fs\tUsing this flag will force gf to follow symbolic links. Use at your own risk\n";
-}
 
-sub lookupIgnoreFile {
-  my @igfile = ( $ENV{"HOME"}."/\.gfignore", "/etc/gfignore");
+sub lookupConfFile {
+  my @igfile = ( $ENV{"HOME"}."/\.gfconf", "/etc/gfconf");
   foreach my $file (@igfile) {
     if( -e $file ) {
       open(my $fh, "<", $file);
       foreach my $line (<$fh>){
         chomp($line);
-        if( $line =~ /^source/p){
+        if( $line =~ /^source/ip){
           my $tar = ${^POSTMATCH};
           $tar =~ s/^\s+|\s+$//g;
           push(@igfile, $tar);
-        } else {
+        } elsif ($line =~ /^target/ip) {
+          my $tar 
           $ignores{$line} = 1;
         }
       }
@@ -42,19 +37,24 @@ sub processArgs {
   my $argc = @_;
   my $retTerm = undef;
   my %ignores;
+  my $targets;
   my $follow = -1;
 
   for( my $i = 0; $i < $argc; $i++) {
-    if( $args[$i] eq "-i" ){
+    if( $args[$i] eq "-t" ){
+      if( $i != ($argc - 1)){ 
+        $targets{$args[$i+1]} = 1;
+        $i++;
+      }else{
+        die 'Invalid flag use';
+      }
+    } elsif( $args[$i] eq "-i" ){
       if( $i != ($argc - 1)){ 
         $ignores{$args[$i+1]} = 1;
         $i++;
       }else{
         die 'Invalid flag use';
       }
-    } elsif( $args[$i] eq "-h" ){
-      &printHelp;
-      exit(0);
     } elsif( $args[$i] eq "-fs") {
       $follow = 1;
     } else {
@@ -65,10 +65,10 @@ sub processArgs {
       }
     }
   }
-  return ($retTerm, %ignores, $follow);
+  return ($retTerm, %ignores, %targets);
 }
 
-($term, %ignores, $fsym) = processArgs(@ARGV);
+($term, %ignores, %targets) = processArgs(@ARGV);
 &lookupIgnoreFile;
 
 sub checkExt {
@@ -165,7 +165,10 @@ sub handleDir {
     next if 1 == shouldSkip($entry, (keys %ignores));
     next if (exists $ignores{$entry});
     next if (exists $seen{$abs});
-    if ( not -r $entry){
+    if(%targets){
+      my $check = 0;
+    }
+    if ( not -R $entry){
       print color("bold yellow");
       print "lack permissions to open $abs\n";
       print color("reset");
