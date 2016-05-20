@@ -1,10 +1,11 @@
-\.svg
-\.js
-\.pdf
-\.bundle
-\.exe
-\.a
-\.out
-\.bundle
-\.run
-\.log
+# This is a comment
+ignore \.svg
+ignore \.js
+ignore \.pdf
+ignore \.bundle
+ignore \.exe
+ignore \.a
+ignore \.out
+ignore \.bundle
+ignore \.run
+ignore \.log

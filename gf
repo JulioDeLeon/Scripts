@@ -7,24 +7,43 @@ use Term::ANSIColor;
 use Cwd;
 use feature 'switch';
 
+my $DEBUG = 0;
 die "Expected search term" if @ARGV < 1;
 my($term, %ignores, %targets, %seen);
 
+sub printDEBUG {
+  if ($DEBUG == 1) {
+    my ($str) = @_;
+    print color("magenta");
+    print $str;
+    print color("reset");
+  }
+}
 
 sub lookupConfFile {
-  my @igfile = ( $ENV{"HOME"}."/\.gfconf", "/etc/gfconf");
-  foreach my $file (@igfile) {
+  printDEBUG "I am here\n";
+  my @conffile = ( $ENV{"HOME"}."/\.gfconf", "/etc/gfconf");
+  foreach my $file (@conffile) {
     if( -e $file ) {
+      printDEBUG "looking at file: $file\n";
       open(my $fh, "<", $file);
       foreach my $line (<$fh>){
         chomp($line);
-        if( $line =~ /^source/ip){
+        if( $line =~ /^source\s/ip){
           my $tar = ${^POSTMATCH};
           $tar =~ s/^\s+|\s+$//g;
-          push(@igfile, $tar);
-        } elsif ($line =~ /^target/ip) {
-          my $tar 
-          $ignores{$line} = 1;
+          printDEBUG "Found source file [$tar]\n";
+          push(@conffile, $tar);
+        } elsif ($line =~ /^target\s/ip) {
+          my $tar = ${^POSTMATCH};
+          $tar =~ s/^\s+|\s+$//g;
+          printDEBUG "Found target pattern [$tar]\n";
+          $targets{$tar} = 1;
+        } elsif ($line =~ /^ignore\s/ip) {
+          my $tar = ${^POSTMATCH};
+          $tar =~ s/^\s+|\s+$//g;
+          printDEBUG "Found ignore pattern [$tar]\n";
+          $ignores{$tar} = 1;
         }
       }
       close $fh;
@@ -69,7 +88,7 @@ sub processArgs {
 }
 
 ($term, %ignores, %targets) = processArgs(@ARGV);
-&lookupIgnoreFile;
+&lookupConfFile;
 
 sub checkExt {
   my($fn) = @_;
@@ -176,6 +195,7 @@ sub handleDir {
     }
 
     #check for recursive links
+    next if (-l $entry);
     if(-l $entry){
       my $link = readlink $entry;
       next if $link eq ".";
