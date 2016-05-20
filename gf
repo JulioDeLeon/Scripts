@@ -2,6 +2,7 @@
 use strict;
 no warnings;
 #use warnings;
+#look at Getopt library
 use File::stat;
 use Term::ANSIColor;
 use Cwd;
