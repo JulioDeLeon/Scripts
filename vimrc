@@ -22,3 +22,4 @@ set ignorecase
 set smartcase
 set showbreak=↪
 set synmaxcol=300
+set colorcolumn=80
