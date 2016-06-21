@@ -4,6 +4,7 @@
 
 """ General options
 syntax enable " Enable syntax highlights
+set paste
 set ttyfast " Faster refraw
 set mouse=nv " Mouse activated in Normal and Visual Mode
 set shortmess+=I " No intro when starting Vim
