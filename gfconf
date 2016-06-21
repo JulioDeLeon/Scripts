@@ -9,3 +9,4 @@ ignore \.out
 ignore \.bundle
 ignore \.run
 ignore \.log
+ignore \.vbox
