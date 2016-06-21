@@ -1,0 +1,73 @@
+Test void CudaKernelTestSuite::SHA1GpuTest2DComplex():
+Target size: 10000
+CPU hash time   [1.072000 ms]
+CPU total time    [1.072000 ms]
+GPU malloc time   [0.224000 ms]
+GPU memcpyHTD time  [0.081000 ms]
+GPU hash time   [0.023000 ms]
+GPU memcpyDTH time  [2.805000 ms]
+GPU total time    [3.133000 ms]
+Test void CudaKernelTestSuite::GPU2dHashFind():
+=
+Target size: 1024
+Sample size: 10
+CPU avg hash time [0.007900 ms]
+CPU avg find time [189.366791 ms]
+CPU avg total time  [1046.343994 ms]
+GPU avg malloc time [5.075000 ms]
+GPU avg memcpyHTD time  [0.174900 ms]
+GPU avg hash time [0.007900 ms]
+GPU avg find time [0.003200 ms]
+GPU avg memcpyDTH time  [9.234100 ms]
+GPU avg total time  [28.990204 ms]
+=
+Target size: 2048
+Sample size: 10
+CPU avg hash time [0.007700 ms]
+CPU avg find time [748.975708 ms]
+CPU avg total time  [4123.360840 ms]
+GPU avg malloc time [0.331200 ms]
+GPU avg memcpyHTD time  [0.268400 ms]
+GPU avg hash time [0.007700 ms]
+GPU avg find time [0.003200 ms]
+GPU avg memcpyDTH time  [35.879601 ms]
+GPU avg total time  [72.980202 ms]
+=
+Target size: 4096
+Sample size: 10
+CPU avg hash time [0.008900 ms]
+CPU avg find time [3100.496094 ms]
+CPU avg total time  [16518.697266 ms]
+GPU avg malloc time [0.365300 ms]
+GPU avg memcpyHTD time  [0.485700 ms]
+GPU avg hash time [0.008900 ms]
+GPU avg find time [0.003600 ms]
+GPU avg memcpyDTH time  [125.182205 ms]
+GPU avg total time  [252.091385 ms]
+=
+Target size: 8192
+Sample size: 10
+CPU avg hash time [0.008900 ms]
+CPU avg find time [13839.994141 ms]
+CPU avg total time  [77714.601562 ms]
+GPU avg malloc time [0.370600 ms]
+GPU avg memcpyHTD time  [0.944700 ms]
+GPU avg hash time [0.008900 ms]
+GPU avg find time [0.003400 ms]
+GPU avg memcpyDTH time  [497.727966 ms]
+GPU avg total time  [998.111206 ms]
+=
+Target size: 16384
+Sample size: 10
+CPU avg hash time [0.009200 ms]
+CPU avg find time [56092.894531 ms]
+CPU avg total time  [306854.343750 ms]
+GPU avg malloc time [0.504500 ms]
+GPU avg memcpyHTD time  [2.900600 ms]
+GPU avg hash time [0.009200 ms]
+GPU avg find time [0.003400 ms]
+GPU avg memcpyDTH time  [2078.162354 ms]
+GPU avg total time  [4163.160156 ms]
+CudaKernelTestSuite: 9/9, 100% correct in 767.561256 seconds
+Total: 9 tests, 100% correct in 767.561256 seconds
+
