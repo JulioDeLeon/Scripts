@@ -1,0 +1,10 @@
+#!/usr/bin/env perl
+use warnings;
+use strict;
+use JSON;
+while(<>){
+  chomp;
+  my $jsonL = JSON->new->allow_nonref;
+  my $perl_scalar = $jsonL->decode($_);
+  print $jsonL->pretty->encode($perl_scalar);
+}
