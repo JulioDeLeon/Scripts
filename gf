@@ -70,6 +70,7 @@ sub processArgs {
   my @ignoresArr;
   my @targetsArr;
   $context = 0;
+  $maxline = 0;
   GetOptions("search=s" => \$retTerm,
              "target=s" => \@targetsArr,
              "ignore=s" => \@ignoresArr,
@@ -142,7 +143,7 @@ sub checkFile {
     chomp($line);
     push(@fileContext, $line);
     $max = $max + 1;
-    last if($max == $maxline + $context);
+    last if($max == $maxline + $context) and ($maxline != 0);
   }
   
   foreach my $line (@fileContext){
