@@ -12,7 +12,7 @@ use feature 'switch';
 
 my $DEBUG = 0;
 die "Expected search term" if @ARGV < 1;
-my($term, %ignores, %targets, %seen, $context);
+my($term, %ignores, %targets, %seen, $context, $maxline);
 
 sub printDEBUG {
   if ($DEBUG == 1) {
@@ -74,6 +74,7 @@ sub processArgs {
              "target=s" => \@targetsArr,
              "ignore=s" => \@ignoresArr,
              "context=i" => \$context,
+             "maxline=i" => \$maxline,
              "debug" => \$DEBUG)
   or die "Error: Could not process command line arguements";
   printDEBUG("retTerm: " . $retTerm . "\n");
@@ -141,6 +142,7 @@ sub checkFile {
     chomp($line);
     push(@fileContext, $line);
     $max = $max + 1;
+    last if($max == $maxline + $context);
   }
   
   foreach my $line (@fileContext){
@@ -154,7 +156,7 @@ sub checkFile {
         for(my $x = ($ln - $context); $x < $ln; $x++){
           if($x > 0){
             print "[$x]\t";
-            print $fileContext[$x];
+            print $fileContext[$x-1];
             print "\n";
           }
         }
@@ -170,7 +172,7 @@ sub checkFile {
          for(my $x = ($ln + 1); $x < $ln + $context + 1; $x++){
           if($x < $max){
             print "[$x]\t";
-            print $fileContext[$x];
+            print $fileContext[$x-1];
           }
           print "\n";
         }
@@ -178,6 +180,7 @@ sub checkFile {
       }
     }
     $ln++;
+    last if $ln == $maxline + 1;
   }
   print "\n" if $tog == 1;
   close $fh;
