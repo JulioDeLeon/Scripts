@@ -7,11 +7,12 @@ no warnings;
 use File::stat;
 use Term::ANSIColor;
 use Cwd;
+use Getopt::Long;
 use feature 'switch';
 
 my $DEBUG = 0;
 die "Expected search term" if @ARGV < 1;
-my($term, %ignores, %targets, %seen);
+my($term, %ignores, %targets, %seen, $context, $maxline);
 
 sub printDEBUG {
   if ($DEBUG == 1) {
@@ -22,8 +23,17 @@ sub printDEBUG {
   }
 }
 
+sub printTars {
+  printDEBUG "ign: " . join(" ", keys %ignores) . "\n";
+  printDEBUG "tar: " . join(" ", keys %targets) . "\n";
+}
+
+=begin
+  lookupConfFile()
+  gf script can handle a general configuration file which can hold 
+  a list of file extensions that can be ignored or targed.
+=cut
 sub lookupConfFile {
-  printDEBUG "I am here\n";
   my @conffile = ( $ENV{"HOME"}."/\.gfconf", "/etc/gfconf");
   foreach my $file (@conffile) {
     if( -e $file ) {
@@ -54,60 +64,51 @@ sub lookupConfFile {
 }
 
 sub processArgs {
-  my @args = @_;
-  my $argc = @_;
   my $retTerm = undef;
-  my %ignores;
-  my $targets;
-  my $follow = -1;
+  my %retIgnores;
+  my %retTargets;
+  my @ignoresArr;
+  my @targetsArr;
+  $context = 0;
+  $maxline = 0;
+  GetOptions("search=s" => \$retTerm,
+             "target=s" => \@targetsArr,
+             "ignore=s" => \@ignoresArr,
+             "context=i" => \$context,
+             "maxline=i" => \$maxline,
+             "debug" => \$DEBUG)
+  or die "Error: Could not process command line arguements";
+  printDEBUG("retTerm: " . $retTerm . "\n");
+  printDEBUG "ignoreArr: " . join(" ", @ignoresArr) . "\n";
+  printDEBUG "targetArr: " . join(" ", @targetsArr) . "\n";
+  die "NO SEARCH TERM" if (! defined $retTerm);
 
-  for( my $i = 0; $i < $argc; $i++) {
-    if( $args[$i] eq "-t" ){
-      if( $i != ($argc - 1)){ 
-        $targets{$args[$i+1]} = 1;
-        $i++;
-      }else{
-        die 'Invalid flag use';
-      }
-    } elsif( $args[$i] eq "-i" ){
-      if( $i != ($argc - 1)){ 
-        $ignores{$args[$i+1]} = 1;
-        $i++;
-      }else{
-        die 'Invalid flag use';
-      }
-    } elsif( $args[$i] eq "-fs") {
-      $follow = 1;
-    } else {
-      if( $retTerm eq undef){
-        $retTerm = $args[$i];
-      } else {
-        die "Found multiple search terms\n";
-      }
-    }
+  #allow commas in targets and ignores 
+  @ignoresArr = split(/,/, join(',', @ignoresArr));
+  @targetsArr = split(/,/, join(',', @targetsArr));
+
+  foreach my $ign (@ignoresArr) {
+    $ignores{$ign} = 1;
   }
-  return ($retTerm, %ignores, %targets);
+
+  foreach my $tar (@targetsArr) {
+    $targets{$tar} = 1;
+  }
+  $term =  $retTerm;
 }
 
-($term, %ignores, %targets) = processArgs(@ARGV);
+&processArgs;
+&printTars;
 &lookupConfFile;
 
-sub checkExt {
-  my($fn) = @_;
-  my @appr = [qr/\.c$/, qr/\.cpp$/, qr/\.pl$/, qr/\.txt$/, qr/\.h$/, qr/\.java$/, qr/\.hs$/, qr/\.hs$/, qr/\.py$/];
-  my @match;
-  given($fn){
-    when(@appr){
-      return 1;
-    }
-    default{
-      return 0;
-    }
-  }
-}
-
+=begin
+  printStr( line )
+    for output, function will be called if the search term is match, printing
+    the matched term in red.
+=cut
 sub printStr {
   my ($str) = @_;
+
   if ( $str =~ /$term/p) {
     my $pre = ${^PREMATCH};
     my $mat = ${^MATCH};
@@ -124,41 +125,107 @@ sub printStr {
   }
 }
 
+=begin
+  checkFile( filepath ) 
+  with filepath being an abs path to a file, checkFile will open the given file
+  and search for the search term. if the term is found, it will print the file
+  path and the lines which the search term was found
+=cut
 sub checkFile {
+  printDEBUG "in checkFile\n";
   my($fn) = @_;
   my $ln = 1, my $tog = 0;
+  my $max = 0;
+  my @fileContext;
+
   open(my $fh, "<", $fn);
   foreach my $line (<$fh>){
     chomp($line);
+    push(@fileContext, $line);
+    $max = $max + 1;
+    last if($max == $maxline + $context) and ($maxline != 0);
+  }
+  
+  foreach my $line (@fileContext){
     if($line =~ /$term/p){
       if($tog == 0){
         $tog = 1;
         print "$fn\n";
       }
+#Print context before match
+      if($context) {
+        for(my $x = ($ln - $context); $x < $ln; $x++){
+          if($x > 0){
+            print "[$x]\t";
+            print $fileContext[$x-1];
+            print "\n";
+          }
+        }
+      }
+
       $line =~ s/^\s+|\s+$//g;
       print "[$ln]\t";
       &printStr($line);
       print "\n";
 
+#print context after match
+      if($context){
+         for(my $x = ($ln + 1); $x < $ln + $context + 1; $x++){
+          if($x < $max){
+            print "[$x]\t";
+            print $fileContext[$x-1];
+          }
+          print "\n";
+        }
+        print "\n"
+      }
     }
     $ln++;
+    last if $ln == $maxline + 1;
   }
   print "\n" if $tog == 1;
   close $fh;
 }
 
+=begin
+  shouldSkip( filename, [undesired terms] )
+  determines if the file should be skipped based on a list of undesired terms.
+  if the file matches with any one of the undersired terms, it returns true
+=cut
 sub shouldSkip {
-  my ($entry, @list) =  @_;
-
-    my $skip = -1;
-    foreach my $key (@list) {
-      my $pattern = qr/$key/i;
-      ($skip = 1) if ($entry =~ /$pattern/);
+  my ($entry) =  @_;
+  my @ign = keys %ignores;
+  my @tar = keys %targets;
+  printDEBUG("should skip ". $entry ."?\n");
+  my $skip = 0;
+  foreach my $key (@ign) {
+    printDEBUG("\tign pattern: " . $key . "\n");
+    my $pattern = qr/$key/i;
+    ($skip = 1) if ($entry =~ /$pattern/);
+    if($skip){
+      printDEBUG("\treturning " . $skip . "\n"); 
+      return $skip;
     }
-  
+  }
+  foreach my $key (@tar) {
+    printDEBUG("\ttar pattern: " . $key . "\n");
+    my $pattern = qr/$key/i;
+    ($skip = 1) if not ($entry =~ /$pattern/);
+    if($skip){
+      printDEBUG("\treturning " . $skip . "\n"); 
+      return $skip;
+    }
+  }
+  printDEBUG("\treturning " . $skip . "\n"); 
   return $skip;
 }
 
+=begin
+  checkLink( $directory, $filename )
+  checks if the file under the given directory is a soft link. returns true if
+  it is. This is done to help avoid self linking soft links. (This is a known
+  issue in some Ubuntu distrubitions and will break if not checked)
+=cut
 sub checkLink {
   my ($dn, $entry) = @_;
   my $abs = $dn."/".$entry;
@@ -175,6 +242,12 @@ sub checkLink {
   }
 }
 
+=begin
+  handleDir( directory_path )
+  Looks through each entry in a directory, if a file is found, checks the file
+  for the desired term. If a directory is found, it recursively handleDir' that
+  directory.  
+=cut
 sub handleDir {
   my($dn) = @_;
   opendir (my $dh, $dn) or die "Could not open $dn";
@@ -183,12 +256,8 @@ sub handleDir {
     my $abs = $dn."/".$entry;
     $abs =~ s/^\/\//\//g;
     next if $entry =~ /^\./;
-    next if 1 == shouldSkip($entry, (keys %ignores));
-    next if (exists $ignores{$entry});
+    next if 1 == shouldSkip($entry);
     next if (exists $seen{$abs});
-    if(%targets){
-      my $check = 0;
-    }
     if ( not -R $entry){
       print color("bold yellow");
       print "lack permissions to open $abs\n";
@@ -217,7 +286,6 @@ sub handleDir {
 }
 
 sub main {
-
   &handleDir(getcwd);
 }
 
