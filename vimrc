@@ -3,10 +3,11 @@ set number
 set history=100
 set ttyfast
 set shortmess+=I
-set smartindent
-set expandtab
-set softtabstop=2
+filetype plugin indent on
 set shiftwidth=2
+set softtabstop=2
+set tabstop=2
+set expandtab
 set incsearch
 set hlsearch
 set cursorline

@@ -108,7 +108,6 @@ sub processArgs {
 =cut
 sub printStr {
   my ($str) = @_;
-
   if ( $str =~ /$term/p) {
     my $pre = ${^PREMATCH};
     my $mat = ${^MATCH};
@@ -177,7 +176,7 @@ sub checkFile {
           }
           print "\n";
         }
-        print "\n"
+        print "\n";
       }
     }
     $ln++;
