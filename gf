@@ -113,7 +113,6 @@ sub printStr {
     my $mat = ${^MATCH};
     my $pos = ${^POSTMATCH};
     
-    $str =~ s/^\s+|\s+$//g;
     print "$pre";
     print color("bold red");
     print "$mat";
@@ -162,7 +161,7 @@ sub checkFile {
         }
       }
 
-      $line =~ s/^\s+|\s+$//g;
+      $line =~ s/^\s+|\s+$//g if(not $context);
       print "[$ln]\t";
       &printStr($line);
       print "\n";
