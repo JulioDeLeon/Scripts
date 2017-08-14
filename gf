@@ -254,7 +254,7 @@ sub handleDir {
     my $abs = $dn."/".$entry;
     $abs =~ s/^\/\//\//g;
     next if $entry =~ /^\./;
-    next if 1 == shouldSkip($entry);
+    next if (0 == (-d $entry)) and (1 == shouldSkip($entry));
     next if (exists $seen{$abs});
     if ( not -R $entry){
       print color("bold yellow");
