@@ -23,6 +23,7 @@ sub main {
 			system("pactl set-sink-mute 1 0");
 			system("pactl set-sink-mute 0 0");
 			system("pactl set-sink-volume 1 -5%");
+			system("pactl set-sink-volume 0 -5%");
       #			system("amixer -D pulse sset Master 5%-");
       #      system("amixer -D pulse sset Master on");
       #      system("amixer -D pulse sset Master 5\%\-");
