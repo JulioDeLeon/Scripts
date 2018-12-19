@@ -11,34 +11,26 @@ my($option, $value) = @ARGV;
 sub main {
   given($option){
     when("up"){
-			system("pactl set-sink-mute 1 0");
-			system("pactl set-sink-volume 1 +5%");
-    	system("pactl set-sink-mute 0 0");
+ 		   	system("pactl set-sink-mute 0 0");
 			system("pactl set-sink-volume 0 +5%");
       
       
       #      system("amixer -D pulse sset Master on");
       #      system("amixer -D pulse sset Master 5\%\+");
     } when("down") {
-			system("pactl set-sink-mute 1 0");
 			system("pactl set-sink-mute 0 0");
-			system("pactl set-sink-volume 1 -5%");
 			system("pactl set-sink-volume 0 -5%");
       #			system("amixer -D pulse sset Master 5%-");
       #      system("amixer -D pulse sset Master on");
       #      system("amixer -D pulse sset Master 5\%\-");
-    } when("down") {
-    } when("mute") {
-			system("pactl set-sink-mute 1 toggle");
+    }  when("mute") {
 			system("pactl set-sink-mute 0 toggle");
       
       #      system("amixer -D pulse sset Master toggle");
-    } when("down") {
-    } when("set") {
+    }  when("set") {
 #			system("pactl set-sink-volume 1 $value\%");
       #      system("amixer -D pulse sset Master $value\%");
-    } when("down") {
-    } default {
+    }default {
       print "Incorrect input";
       return 0;
     }
