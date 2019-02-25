@@ -2,7 +2,7 @@
 [user]
 # Please adapt and uncomment the following lines:
 	name = Julio de Leon
-	email = jdeleon@CHIC02RJ9HWG8WN.sea.corp.expecn.com
+	email = whatever@gmail.com
 [core]
 	excludesfile = /Users/jdeleon/.gitignore_global
 [difftool "sourcetree"]
