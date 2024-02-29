@@ -1,6 +1,7 @@
 #!/usr/bin/env perl
 use strict;
 no warnings;
+use warnings;
 #use warnings;
 #look at Getopt library
 #also look at data dump
@@ -253,8 +254,9 @@ sub handleDir {
   foreach my $entry (readdir $dh){
     my $abs = $dn."/".$entry;
     $abs =~ s/^\/\//\//g;
+    printDEBUG("this is abs -> " . $abs . "\n");
     next if $entry =~ /^\./;
-    next if (0 == (-d $entry)) and (1 == shouldSkip($entry));
+    next if (0 == (-d $entry)) and (1 == shouldSkip($abs));
     next if (exists $seen{$abs});
     if ( not -R $entry){
       print color("bold yellow");
