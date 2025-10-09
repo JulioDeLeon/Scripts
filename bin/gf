@@ -11,9 +11,22 @@ use Cwd;
 use Getopt::Long;
 use feature 'switch';
 
+# Version and author information
+my $VERSION = "1.0.0";
+my $VERSION_DATE = "2024";
+my $AUTHOR = "Julio de Leon";
+
 my $DEBUG = 0;
-die "Expected search term" if @ARGV < 1;
+# Check for basic argument requirements - will be handled properly in processArgs
 my($term, %ignores, %targets, %seen, $context, $maxline);
+
+# Handle case where no arguments are provided at all
+if (@ARGV == 0) {
+  print STDERR "Error: No arguments provided.\n";
+  print STDERR "\n";
+  show_usage();
+  exit 1;
+}
 
 sub printDEBUG {
   if ($DEBUG == 1) {
@@ -32,20 +45,48 @@ sub printTars {
 =begin
   lookupConfFile()
   gf script can handle a general configuration file which can hold 
-  a list of file extensions that can be ignored or targed.
+  a list of file extensions that can be ignored or targeted.
 =cut
 sub lookupConfFile {
   my @conffile = ( $ENV{"HOME"}."/\.gfconf", "/etc/gfconf");
   foreach my $file (@conffile) {
     if( -e $file ) {
       printDEBUG "looking at file: $file\n";
-      open(my $fh, "<", $file);
+      
+      # Check if we can read the configuration file
+      if (! -r $file) {
+        print STDERR "Warning: Configuration file '$file' exists but is not readable.\n";
+        print STDERR "Check file permissions to use configuration settings.\n";
+        next;
+      }
+      
+      my $fh;
+      if (!open($fh, "<", $file)) {
+        print STDERR "Warning: Could not open configuration file '$file': $!\n";
+        print STDERR "Continuing without this configuration file.\n";
+        next;
+      }
+      
+      my $line_num = 0;
       foreach my $line (<$fh>){
+        $line_num++;
         chomp($line);
+        
+        # Skip empty lines and comments
+        next if $line =~ /^\s*$/ || $line =~ /^\s*#/;
+        
         if( $line =~ /^source\s/ip){
           my $tar = ${^POSTMATCH};
           $tar =~ s/^\s+|\s+$//g;
           printDEBUG "Found source file [$tar]\n";
+          
+          # Validate source file exists
+          if (! -e $tar) {
+            print STDERR "Warning: Source file '$tar' specified in '$file' (line $line_num) does not exist.\n";
+            print STDERR "Skipping this source directive.\n";
+            next;
+          }
+          
           push(@conffile, $tar);
         } elsif ($line =~ /^target\s/ip) {
           my $tar = ${^POSTMATCH};
@@ -57,11 +98,118 @@ sub lookupConfFile {
           $tar =~ s/^\s+|\s+$//g;
           printDEBUG "Found ignore pattern [$tar]\n";
           $ignores{$tar} = 1;
+        } else {
+          # Unknown configuration directive
+          print STDERR "Warning: Unknown configuration directive in '$file' (line $line_num): $line\n";
+          print STDERR "Valid directives are: source, target, ignore\n";
         }
       }
       close $fh;
     }
   }     
+}
+
+# Help system function stubs
+sub show_usage {
+  print "gf - Friendly file search tool with flexible filtering\n";
+  print "\n";
+  print "Usage: gf -s PATTERN [OPTIONS]\n";
+  print "\n";
+  print "Common examples:\n";
+  print "  gf -s 'function'              # Search for 'function' in all files\n";
+  print "  gf -s 'TODO' -t '*.pl'        # Search for 'TODO' in Perl files only\n";
+  print "  gf -s 'error' -i '*.log'      # Search for 'error', ignoring log files\n";
+  print "\n";
+  print "Try 'gf --help' for complete options and more examples.\n";
+}
+
+sub show_usage_and_exit {
+  print STDERR "Error: Invalid command line options provided.\n";
+  print STDERR "\n";
+  show_usage();
+  exit 1;
+}
+
+sub show_help {
+  print "gf - Friendly file search tool with flexible filtering\n";
+  print "\n";
+  print "DESCRIPTION\n";
+  print "    gf recursively searches for text patterns within files, offering flexible\n";
+  print "    filtering options to target specific file types or ignore unwanted ones.\n";
+  print "    Perfect for code searches, log analysis, and content discovery.\n";
+  print "\n";
+  print "USAGE\n";
+  print "    gf -s PATTERN [OPTIONS]\n";
+  print "\n";
+  print "SEARCH OPTIONS\n";
+  print "    -s, --search PATTERN    Search pattern to find in files (required)\n";
+  print "\n";
+  print "FILE FILTERING OPTIONS\n";
+  print "    -t, --target PATTERN    Target file patterns to include (e.g., '*.pl,*.pm')\n";
+  print "    -i, --ignore PATTERN    File patterns to ignore (e.g., '*.log,*.tmp')\n";
+  print "\n";
+  print "OUTPUT CONTROL OPTIONS\n";
+  print "    -c, --context NUM       Show NUM lines of context around matches\n";
+  print "    -m, --maxline NUM       Maximum lines to read from each file\n";
+  print "\n";
+  print "UTILITY OPTIONS\n";
+  print "    -d, --debug             Enable debug output\n";
+  print "    -h, --help              Show this help message\n";
+  print "    -V, --version           Show version information\n";
+  print "\n";
+  print "EXAMPLES\n";
+  print "    Basic searches:\n";
+  print "        gf -s 'function'                    # Find 'function' in all files\n";
+  print "        gf -s 'TODO|FIXME'                  # Find TODO or FIXME comments\n";
+  print "\n";
+  print "    File type filtering:\n";
+  print "        gf -s 'error' -t '*.pl,*.pm'       # Search only Perl files\n";
+  print "        gf -s 'config' -i '*.log,*.tmp'    # Ignore log and temp files\n";
+  print "\n";
+  print "    Context and limits:\n";
+  print "        gf -s 'sub main' -c 3               # Show 3 lines around matches\n";
+  print "        gf -s 'import' -m 100               # Read only first 100 lines\n";
+  print "\n";
+  print "    Combined options:\n";
+  print "        gf -s 'error' -t '*.pl' -c 2 -i '*.bak'  # Complex filtering\n";
+  print "\n";
+  print "CONFIGURATION FILES\n";
+  print "    gf supports configuration files to set default ignore and target patterns:\n";
+  print "\n";
+  print "    Locations (checked in order):\n";
+  print "        ~/.gfconf                           # User-specific config\n";
+  print "        /etc/gfconf                         # System-wide config\n";
+  print "\n";
+  print "    Configuration syntax:\n";
+  print "        ignore *.log                        # Ignore log files\n";
+  print "        ignore *.tmp                        # Ignore temp files\n";
+  print "        target *.pl                         # Target Perl files\n";
+  print "        target *.pm                         # Target Perl modules\n";
+  print "        source /path/to/other/config        # Include another config\n";
+  print "\n";
+  print "    Example ~/.gfconf:\n";
+  print "        # Common development ignores\n";
+  print "        ignore *.log\n";
+  print "        ignore *.tmp\n";
+  print "        ignore .git/*\n";
+  print "        ignore node_modules/*\n";
+  print "\n";
+  print "EXIT STATUS\n";
+  print "    0    Successful completion\n";
+  print "    1    Error occurred\n";
+  print "\n";
+  print "SEE ALSO\n";
+  print "    grep(1), find(1), ag(1), rg(1)\n";
+  print "    For detailed documentation: man gf\n";
+}
+
+sub show_version {
+  print "gf (Friendly File Search) version $VERSION\n";
+  print "Released $VERSION_DATE\n";
+  print "Written by $AUTHOR\n";
+  print "\n";
+  print "A flexible file search tool with pattern matching and filtering capabilities.\n";
+  print "For help and examples, run: gf --help\n";
 }
 
 sub processArgs {
@@ -70,6 +218,8 @@ sub processArgs {
   my %retTargets;
   my @ignoresArr;
   my @targetsArr;
+  my $show_help = 0;
+  my $show_version = 0;
   $context = 0;
   $maxline = 0;
   GetOptions("search=s" => \$retTerm,
@@ -77,12 +227,32 @@ sub processArgs {
              "ignore=s" => \@ignoresArr,
              "context=i" => \$context,
              "maxline=i" => \$maxline,
-             "debug" => \$DEBUG)
-  or die "Error: Could not process command line arguements";
-  printDEBUG("retTerm: " . $retTerm . "\n");
+             "debug" => \$DEBUG,
+             "help|h" => \$show_help,
+             "version|V" => \$show_version)
+  or show_usage_and_exit();
+  
+  # Handle help and version flags - these take precedence over other processing
+  if ($show_help) {
+    show_help();
+    exit 0;
+  }
+  
+  if ($show_version) {
+    show_version();
+    exit 0;
+  }
+  printDEBUG("retTerm: " . (defined $retTerm ? $retTerm : "undefined") . "\n");
   printDEBUG "ignoreArr: " . join(" ", @ignoresArr) . "\n";
   printDEBUG "targetArr: " . join(" ", @targetsArr) . "\n";
-  die "NO SEARCH TERM" if (! defined $retTerm);
+  
+  # Check if search term was provided
+  if (! defined $retTerm) {
+    print STDERR "Error: No search pattern provided.\n";
+    print STDERR "\n";
+    show_usage();
+    exit 1;
+  }
 
   #allow commas in targets and ignores 
   @ignoresArr = split(/,/, join(',', @ignoresArr));
@@ -98,6 +268,7 @@ sub processArgs {
   $term =  $retTerm;
 }
 
+# Process command line arguments first - help requests are handled here
 &processArgs;
 &printTars;
 &lookupConfFile;
@@ -137,7 +308,12 @@ sub checkFile {
   my $max = 0;
   my @fileContext;
 
-  open(my $fh, "<", $fn);
+  my $fh;
+  if (!open($fh, "<", $fn)) {
+    print STDERR "Warning: Could not open file '$fn': $!\n";
+    return;
+  }
+  
   foreach my $line (<$fh>){
     chomp($line);
     push(@fileContext, $line);
@@ -249,7 +425,14 @@ sub checkLink {
 =cut
 sub handleDir {
   my($dn) = @_;
-  opendir (my $dh, $dn) or die "Could not open $dn";
+  
+  my $dh;
+  if (!opendir ($dh, $dn)) {
+    print STDERR "Error: Could not open directory '$dn': $!\n";
+    print STDERR "This directory will be skipped. Check permissions or path validity.\n";
+    return;
+  }
+  
   chdir($dh);
   foreach my $entry (readdir $dh){
     my $abs = $dn."/".$entry;
@@ -260,7 +443,8 @@ sub handleDir {
     next if (exists $seen{$abs});
     if ( not -R $entry){
       print color("bold yellow");
-      print "lack permissions to open $abs\n";
+      print "Warning: Permission denied accessing '$abs'\n";
+      print "Tip: You may need to run with different permissions or check file ownership.\n";
       print color("reset");
       next;
     }
@@ -286,7 +470,9 @@ sub handleDir {
 }
 
 sub main {
+  # Main search functionality - only reached if help/version not requested
   &handleDir(getcwd);
 }
 
+# Execute main search functionality
 &main;
