@@ -7,6 +7,7 @@ use lib 'lib';
 use GF::Help qw(show_usage show_help show_version show_usage_and_exit);
 use GF::Config qw(lookup_config_file);
 use GF::Search qw(process_args main_search print_targets);
+use GF::Startup qw(initialize_gf_system);
 
 # Global variables
 my($term, %ignores, %targets, $context, $maxline, $debug);
@@ -29,6 +30,15 @@ print_targets(\%ignores, \%targets, $debug);
 
 # Load configuration files
 lookup_config_file(\%ignores, \%targets, $debug);
+
+# Initialize the gf system with pattern compilation and configuration caching
+eval {
+  initialize_gf_system($term, \%ignores, \%targets, $context, $maxline, $debug);
+};
+if ($@) {
+  print STDERR "Initialization Error: $@\n";
+  exit 1;
+}
 
 # Execute main search functionality
 main_search($term, \%ignores, \%targets, $context, $maxline, $debug);
