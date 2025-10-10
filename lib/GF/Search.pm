@@ -313,7 +313,12 @@ sub _process_file_streaming {
   my $line_num = 0;
   my $found_match = 0;
   my @context_buffer = ();  # Rolling buffer for context lines
+  my @pending_matches = (); # Queue for matches waiting for after-context
+  my @recently_displayed = (); # Recently displayed matches for overlap detection
   my $search_pattern = get_search_pattern();
+  
+  # Memory management: bounded pending matches queue
+  my $max_pending_matches = 100;  # Maximum number of pending matches to prevent memory issues
   
   while (my $line = <$fh>) {
     chomp($line);
@@ -327,15 +332,196 @@ sub _process_file_streaming {
         buffer_output("$fn\n");
       }
       
-      # Display match with context
-      _display_match_with_context(\@context_buffer, $line, $line_num, $term, $context);
+      # Create pending match entry instead of immediate display
+      my @before_context = ();
+      if ($context) {
+        # Copy before-context from rolling buffer
+        my $start_context_line = $line_num - $context;
+        foreach my $entry (@context_buffer) {
+          if ($entry->{line_num} >= $start_context_line && $entry->{line_num} < $line_num) {
+            push @before_context, {
+              line_num => $entry->{line_num},
+              content => $entry->{content}
+            };
+          }
+        }
+      }
+      
+      # Create pending match structure
+      my $pending_match = {
+        line_num => $line_num,
+        content => $line,
+        before_context => \@before_context,
+        after_context => [],
+        after_needed => $context
+      };
+      
+      # If no context needed, display immediately
+      if ($context == 0) {
+        _display_match_with_context(
+          \@context_buffer,
+          $pending_match->{content},
+          $pending_match->{line_num},
+          $term,
+          $context,
+          $pending_match->{after_context},
+          undef
+        );
+      } else {
+        # Handle queue overflow to prevent memory issues
+        if (@pending_matches >= $max_pending_matches) {
+          if ($debug) {
+            print Term::ANSIColor::color("yellow");
+            print "Warning: Pending matches queue overflow at line $line_num. Forcing display of oldest matches.\n";
+            print Term::ANSIColor::color("reset");
+          }
+          
+          # Force display of oldest matches to make room
+          _force_display_oldest_matches(\@pending_matches, \@context_buffer, $term, $context, \@recently_displayed, $debug);
+        }
+        
+        push @pending_matches, $pending_match;
+      }
     }
+    
+    # Add current line to after-context of pending matches that need it
+    # Respect maxline limits - don't collect after-context beyond maxline
+    if (@pending_matches && $context > 0) {
+      foreach my $pending_match (@pending_matches) {
+        # Only collect after-context for matches that still need it
+        if ($pending_match->{after_needed} > 0 && $line_num > $pending_match->{line_num}) {
+          # Check if we're within maxline limit for after-context collection
+          if (!$maxline || $line_num <= $maxline) {
+            push @{$pending_match->{after_context}}, {
+              line_num => $line_num,
+              content => $line
+            };
+            $pending_match->{after_needed}--;
+          } else {
+            # Beyond maxline limit - mark after-context as complete with available lines
+            if ($debug) {
+              print Term::ANSIColor::color("yellow");
+              print "Maxline limit ($maxline) reached - completing after-context for match at line $pending_match->{line_num} with available lines\n";
+              print Term::ANSIColor::color("reset");
+            }
+            $pending_match->{after_needed} = 0;  # Mark as complete
+          }
+        }
+      }
+    }
+    
+    # Check for completed matches and display them with overlapping context handling
+    my @remaining_matches = ();
+    foreach my $pending_match (@pending_matches) {
+      if ($pending_match->{after_needed} <= 0) {
+        # Match has collected sufficient after-context
+        # Check if we should delay display to handle potential overlaps
+        if (_should_delay_match_display($pending_match, \@pending_matches, $context, $line_num, $debug)) {
+          # Keep this match in pending queue for now
+          push @remaining_matches, $pending_match;
+        } else {
+          # Safe to display this match now
+          my $display_match = _prepare_match_for_display($pending_match, \@pending_matches, \@recently_displayed, $context, $debug);
+          
+          # Display the match with optimized context
+          _display_match_with_context(
+            \@context_buffer,
+            $display_match->{content},
+            $display_match->{line_num},
+            $term,
+            $context,
+            $display_match->{after_context},
+            $display_match->{optimized_before_context}
+          );
+          
+          # Add to recently displayed matches for future overlap detection
+          push @recently_displayed, $display_match;
+          
+          # Keep only recent matches to avoid memory growth
+          if (@recently_displayed > 10) {
+            shift @recently_displayed;
+          }
+        }
+      } else {
+        # Match still needs more after-context
+        push @remaining_matches, $pending_match;
+      }
+    }
+    @pending_matches = @remaining_matches;
     
     # Maintain rolling context buffer
     _manage_context_buffer(\@context_buffer, $line, $line_num, $context);
     
     # Early exit for maxline limit to avoid unnecessary processing
-    last if ($maxline && $line_num >= $maxline);
+    # When maxline is reached, complete any pending matches with available after-context
+    if ($maxline && $line_num >= $maxline) {
+      if (@pending_matches && $debug) {
+        print Term::ANSIColor::color("yellow");
+        print "Maxline limit ($maxline) reached with " . scalar(@pending_matches) . " pending matches - completing with available after-context\n";
+        print Term::ANSIColor::color("reset");
+      }
+      
+      # Mark all pending matches as complete (they'll be processed in EOF handling)
+      foreach my $pending_match (@pending_matches) {
+        $pending_match->{after_needed} = 0;
+      }
+      
+      last;
+    }
+  }
+  
+  # Handle end-of-file scenarios for incomplete after-context
+  if (@pending_matches) {
+    if ($debug) {
+      print Term::ANSIColor::color("magenta");
+      print "EOF detected with " . scalar(@pending_matches) . " pending matches\n";
+      print Term::ANSIColor::color("reset");
+    }
+    
+    # Sort pending matches by line number to process them in order
+    my @sorted_pending = sort { $a->{line_num} <=> $b->{line_num} } @pending_matches;
+    
+    foreach my $pending_match (@sorted_pending) {
+      if ($debug) {
+        my $incomplete_context = $pending_match->{after_needed} > 0 ? "incomplete" : "complete";
+        my $available_after = scalar(@{$pending_match->{after_context}});
+        my $maxline_note = $pending_match->{maxline_limited} ? " (limited by maxline)" : "";
+        print Term::ANSIColor::color("magenta");
+        print "Processing pending match at line $pending_match->{line_num}: $incomplete_context after-context ($available_after lines available)$maxline_note\n";
+        print Term::ANSIColor::color("reset");
+      }
+      
+      # Prepare match for display with overlapping context handling at EOF
+      my $display_match = _prepare_match_for_display($pending_match, \@sorted_pending, \@recently_displayed, $context, $debug);
+      
+      # Display matches with whatever after-context is available at EOF
+      _display_match_with_context(
+        \@context_buffer,
+        $display_match->{content},
+        $display_match->{line_num},
+        $term,
+        $context,
+        $display_match->{after_context},
+        $display_match->{optimized_before_context}
+      );
+      
+      # Add to recently displayed matches for future overlap detection
+      push @recently_displayed, $display_match;
+      
+      # Keep only recent matches to avoid memory growth
+      if (@recently_displayed > 10) {
+        shift @recently_displayed;
+      }
+    }
+    
+    # Clean up pending matches queue after processing all remaining matches
+    @pending_matches = ();
+    
+    if ($debug) {
+      print Term::ANSIColor::color("magenta");
+      print "Pending matches queue cleaned up at EOF\n";
+      print Term::ANSIColor::color("reset");
+    }
   }
   
   if ($found_match) {
@@ -376,9 +562,629 @@ sub _manage_context_buffer {
   }
 }
 
+=head2 _should_delay_match_display
+
+Determines if a completed match should be delayed to handle potential overlapping context
+with matches that might appear soon.
+
+Arguments:
+  - $completed_match: Match that has collected sufficient after-context
+  - $pending_matches_ref: Reference to array of all pending matches
+  - $context: Number of context lines
+  - $current_line_num: Current line number being processed
+  - $debug: Debug flag
+
+Returns:
+  - 1 if match should be delayed, 0 if safe to display now
+
+=cut
+
+sub _should_delay_match_display {
+  my ($completed_match, $pending_matches_ref, $context, $current_line_num, $debug) = @_;
+  
+  # If no context, no need to delay
+  return 0 if $context == 0;
+  
+  my $match_after_end = $completed_match->{line_num} + $context;
+  
+  # Check if there are any pending matches that might create overlaps
+  foreach my $pending_match (@$pending_matches_ref) {
+    # Skip the completed match itself
+    next if $pending_match->{line_num} == $completed_match->{line_num};
+    
+    # Only consider matches that come after the completed match
+    next if $pending_match->{line_num} <= $completed_match->{line_num};
+    
+    my $next_before_start = $pending_match->{line_num} - $context;
+    
+    # If there's potential overlap, delay display
+    if ($match_after_end >= $next_before_start) {
+      if ($debug) {
+        print Term::ANSIColor::color("magenta");
+        print "Delaying display of match at line $completed_match->{line_num} due to potential overlap with match at line $pending_match->{line_num}\n";
+        print Term::ANSIColor::color("reset");
+      }
+      return 1;
+    }
+  }
+  
+  # Only delay if we're very close to the end of the file and there might be more matches
+  # This is a more conservative approach to avoid unnecessary delays
+  my $conservative_window = $match_after_end + 1; # Only delay if we're within 1 line of the after-context end
+  if ($current_line_num <= $conservative_window) {
+    if ($debug) {
+      print Term::ANSIColor::color("magenta");
+      print "Delaying display of match at line $completed_match->{line_num} - still very close to after-context end (current line: $current_line_num, after-context ends: $match_after_end)\n";
+      print Term::ANSIColor::color("reset");
+    }
+    return 1;
+  }
+  
+  if ($debug) {
+    print Term::ANSIColor::color("magenta");
+    print "Safe to display match at line $completed_match->{line_num} - no overlapping matches detected\n";
+    print Term::ANSIColor::color("reset");
+  }
+  
+  return 0;
+}
+
+=head2 _prepare_match_for_display
+
+Prepares a match for display by detecting and handling overlapping context with subsequent matches.
+Implements deduplication logic to avoid displaying same lines multiple times.
+
+Arguments:
+  - $current_match: Current match to prepare for display
+  - $pending_matches_ref: Reference to array of all pending matches
+  - $context: Number of context lines
+  - $debug: Debug flag
+
+Returns:
+  - Hash reference with optimized match data for display
+
+=cut
+
+sub _prepare_match_for_display {
+  my ($current_match, $pending_matches_ref, $recently_displayed_ref, $context, $debug) = @_;
+  
+  # Create a copy of the match to avoid modifying the original
+  my $display_match = {
+    line_num => $current_match->{line_num},
+    content => $current_match->{content},
+    before_context => [@{$current_match->{before_context}}],
+    after_context => [@{$current_match->{after_context}}],
+    optimized_before_context => $current_match->{optimized_before_context}
+  };
+  
+  # Check if this match was already optimized by a previous match
+  if ($current_match->{optimized_before_context}) {
+    $display_match->{optimized_before_context} = $current_match->{optimized_before_context};
+  }
+  
+  # If no context, return as-is
+  if ($context == 0) {
+    return $display_match;
+  }
+  
+  # Find the next match that might have overlapping context
+  my $next_match = _find_next_overlapping_match($current_match, $pending_matches_ref, $context, $debug);
+  
+  # Find the previous match that might have overlapping context with current match
+  my $prev_match = _find_previous_overlapping_match($current_match, $recently_displayed_ref, $context, $debug);
+  
+  if ($next_match) {
+    if ($debug) {
+      print Term::ANSIColor::color("magenta");
+      print "Detected overlapping context between match at line $current_match->{line_num} and line $next_match->{line_num}\n";
+      print Term::ANSIColor::color("reset");
+    }
+    
+    # Merge overlapping context sections efficiently
+    my $merge_info = _merge_overlapping_context_sections($current_match, $next_match, $context, $debug);
+    
+    # Optimize after-context based on merge information
+    $display_match->{after_context} = _optimize_after_context_for_overlap(
+      $current_match->{after_context},
+      $next_match,
+      $context,
+      $debug
+    );
+    
+    # Store merge information for potential future optimizations
+    $display_match->{merge_info} = $merge_info;
+  }
+  
+  if ($prev_match) {
+    if ($debug) {
+      print Term::ANSIColor::color("magenta");
+      print "Detected overlapping context between previous match at line $prev_match->{line_num} and current match at line $current_match->{line_num}\n";
+      print Term::ANSIColor::color("reset");
+    }
+    
+    # Optimize before-context to avoid duplication with previous match
+    $display_match->{optimized_before_context} = _optimize_before_context_for_overlap(
+      $current_match->{before_context},
+      $prev_match,
+      $context,
+      $debug
+    );
+    
+    # Also optimize after-context to avoid duplication with previous match's after-context
+    $display_match->{after_context} = _optimize_after_context_with_previous(
+      $display_match->{after_context},
+      $prev_match,
+      $context,
+      $debug
+    );
+  }
+  
+  # If no optimization was applied, use the original before-context
+  if (!$display_match->{optimized_before_context}) {
+    $display_match->{optimized_before_context} = $display_match->{before_context};
+  }
+  
+  return $display_match;
+}
+
+=head2 _find_previous_overlapping_match
+
+Finds the previous match that has overlapping context with the current match.
+This is used to optimize the current match's before-context.
+
+Arguments:
+  - $current_match: Current match being processed
+  - $pending_matches_ref: Reference to array of all pending matches
+  - $context: Number of context lines
+  - $debug: Debug flag
+
+Returns:
+  - Reference to previous overlapping match, or undef if none found
+
+=cut
+
+sub _find_previous_overlapping_match {
+  my ($current_match, $recently_displayed_ref, $context, $debug) = @_;
+  
+  my $current_before_start = $current_match->{line_num} - $context;
+  
+  # Find the closest previous match that might overlap
+  my $closest_match = undef;
+  my $closest_distance = 999999;
+  
+  foreach my $displayed_match (@$recently_displayed_ref) {
+    # Only consider matches that come before the current match
+    next if $displayed_match->{line_num} >= $current_match->{line_num};
+    
+    my $prev_after_end = $displayed_match->{line_num} + $context;
+    
+    # Check if there's overlap: previous after-context overlaps with current before-context
+    if ($prev_after_end >= $current_before_start) {
+      my $distance = $current_match->{line_num} - $displayed_match->{line_num};
+      if ($distance < $closest_distance) {
+        $closest_distance = $distance;
+        $closest_match = $displayed_match;
+      }
+    }
+  }
+  
+  if ($debug && $closest_match) {
+    print Term::ANSIColor::color("magenta");
+    print "Found previous overlapping match: prev ends context at line " . ($closest_match->{line_num} + $context) . ", current starts context at line $current_before_start\n";
+    print Term::ANSIColor::color("reset");
+  }
+  
+  return $closest_match;
+}
+
+=head2 _find_next_overlapping_match
+
+Finds the next pending match that has overlapping context with the current match.
+
+Arguments:
+  - $current_match: Current match being processed
+  - $pending_matches_ref: Reference to array of all pending matches
+  - $context: Number of context lines
+  - $debug: Debug flag
+
+Returns:
+  - Reference to next overlapping match, or undef if none found
+
+=cut
+
+sub _find_next_overlapping_match {
+  my ($current_match, $pending_matches_ref, $context, $debug) = @_;
+  
+  my $current_after_end = $current_match->{line_num} + $context;
+  
+  # Find the closest subsequent match that might overlap
+  my $closest_match = undef;
+  my $closest_distance = 999999;
+  
+  foreach my $pending_match (@$pending_matches_ref) {
+    # Skip the current match itself
+    next if $pending_match->{line_num} == $current_match->{line_num};
+    
+    # Only consider matches that come after the current match
+    next if $pending_match->{line_num} <= $current_match->{line_num};
+    
+    my $next_before_start = $pending_match->{line_num} - $context;
+    
+    # Check if there's overlap: current after-context overlaps with next before-context
+    if ($current_after_end >= $next_before_start) {
+      my $distance = $pending_match->{line_num} - $current_match->{line_num};
+      if ($distance < $closest_distance) {
+        $closest_distance = $distance;
+        $closest_match = $pending_match;
+      }
+    }
+  }
+  
+  if ($debug && $closest_match) {
+    print Term::ANSIColor::color("magenta");
+    print "Found overlapping match: current ends at line $current_after_end, next starts context at line " . ($closest_match->{line_num} - $context) . "\n";
+    print Term::ANSIColor::color("reset");
+  }
+  
+  return $closest_match;
+}
+
+=head2 _merge_overlapping_context_sections
+
+Efficiently merges overlapping context sections between consecutive matches.
+Maintains proper line numbering and ensures match highlighting is preserved.
+
+Arguments:
+  - $current_match: Current match being processed
+  - $next_match: Next match with overlapping context
+  - $context: Number of context lines
+  - $debug: Debug flag
+
+Returns:
+  - Hash reference with merged context information
+
+=cut
+
+sub _merge_overlapping_context_sections {
+  my ($current_match, $next_match, $context, $debug) = @_;
+  
+  my $current_after_end = $current_match->{line_num} + $context;
+  my $next_before_start = $next_match->{line_num} - $context;
+  
+  # Calculate the overlap region
+  my $overlap_start = $next_before_start;
+  my $overlap_end = $current_after_end;
+  
+  if ($debug) {
+    print Term::ANSIColor::color("magenta");
+    print "Merging context: current match ends context at line $current_after_end, next starts at line $next_before_start\n";
+    print "Overlap region: lines $overlap_start to $overlap_end\n";
+    print Term::ANSIColor::color("reset");
+  }
+  
+  # Return information about the merged sections
+  return {
+    has_overlap => ($overlap_start <= $overlap_end),
+    overlap_start => $overlap_start,
+    overlap_end => $overlap_end,
+    current_context_cutoff => $overlap_start - 1
+  };
+}
+
+=head2 _optimize_before_context_for_overlap
+
+Optimizes before-context to avoid duplication with the previous match's after-context.
+Maintains proper line numbering and formatting while eliminating redundant lines.
+
+Arguments:
+  - $before_context_ref: Reference to current match's before-context array
+  - $prev_match: Previous match that has overlapping context
+  - $context: Number of context lines
+  - $debug: Debug flag
+
+Returns:
+  - Reference to optimized before-context array
+
+=cut
+
+sub _optimize_before_context_for_overlap {
+  my ($before_context_ref, $prev_match, $context, $debug) = @_;
+  
+  my @optimized_before_context = ();
+  my $prev_after_end = $prev_match->{line_num} + $context;
+  my $prev_match_line = $prev_match->{line_num};
+  
+  # Only include before-context lines that don't overlap with previous match's after-context
+  foreach my $context_line (@$before_context_ref) {
+    # Skip lines that would have been displayed in previous match's after-context
+    if ($context_line->{line_num} <= $prev_after_end) {
+      if ($debug) {
+        print Term::ANSIColor::color("magenta");
+        print "Removing overlapping before-context line $context_line->{line_num} to avoid duplication with previous match's after-context\n";
+        print Term::ANSIColor::color("reset");
+      }
+    } else {
+      push @optimized_before_context, $context_line;
+    }
+  }
+  
+  if ($debug) {
+    my $original_count = scalar(@$before_context_ref);
+    my $optimized_count = scalar(@optimized_before_context);
+    print Term::ANSIColor::color("magenta");
+    print "Optimized before-context for overlap: $original_count -> $optimized_count lines (prev match ended context at line $prev_after_end)\n";
+    print Term::ANSIColor::color("reset");
+  }
+  
+  return \@optimized_before_context;
+}
+
+=head2 _optimize_after_context_with_previous
+
+Optimizes after-context to avoid duplication with the previous match's after-context.
+This handles cases where multiple matches have overlapping after-context ranges.
+
+Arguments:
+  - $after_context_ref: Reference to current match's after-context array
+  - $prev_match: Previous match that might have overlapping after-context
+  - $context: Number of context lines
+  - $debug: Debug flag
+
+Returns:
+  - Reference to optimized after-context array
+
+=cut
+
+sub _optimize_after_context_with_previous {
+  my ($after_context_ref, $prev_match, $context, $debug) = @_;
+  
+  my @optimized_after_context = ();
+  my $prev_after_end = $prev_match->{line_num} + $context;
+  
+  # Only include after-context lines that don't overlap with previous match's after-context
+  foreach my $context_line (@$after_context_ref) {
+    # Skip lines that would have been displayed in previous match's after-context
+    if ($context_line->{line_num} <= $prev_after_end) {
+      if ($debug) {
+        print Term::ANSIColor::color("magenta");
+        print "Removing overlapping after-context line $context_line->{line_num} to avoid duplication with previous match's after-context\n";
+        print Term::ANSIColor::color("reset");
+      }
+    } else {
+      push @optimized_after_context, $context_line;
+    }
+  }
+  
+  if ($debug) {
+    my $original_count = scalar(@$after_context_ref);
+    my $optimized_count = scalar(@optimized_after_context);
+    print Term::ANSIColor::color("magenta");
+    print "Optimized after-context with previous: $original_count -> $optimized_count lines (prev match ended context at line $prev_after_end)\n";
+    print Term::ANSIColor::color("reset");
+  }
+  
+  return \@optimized_after_context;
+}
+
+=head2 _handle_maxline_limited_context
+
+Handles cases where maxline limit prevents complete after-context collection.
+Ensures pending matches are properly completed when maxline is reached.
+
+Arguments:
+  - $pending_matches_ref: Reference to pending matches array
+  - $maxline: Maximum line limit
+  - $current_line_num: Current line number
+  - $debug: Debug flag
+
+=cut
+
+sub _handle_maxline_limited_context {
+  my ($pending_matches_ref, $maxline, $current_line_num, $debug) = @_;
+  
+  return unless $maxline && $current_line_num >= $maxline;
+  
+  if ($debug && @$pending_matches_ref) {
+    print Term::ANSIColor::color("yellow");
+    print "Handling maxline-limited context for " . scalar(@$pending_matches_ref) . " pending matches\n";
+    print Term::ANSIColor::color("reset");
+  }
+  
+  # Complete all pending matches that are affected by maxline limit
+  foreach my $pending_match (@$pending_matches_ref) {
+    if ($pending_match->{after_needed} > 0) {
+      my $available_after = scalar(@{$pending_match->{after_context}});
+      my $needed_after = $pending_match->{after_needed};
+      
+      if ($debug) {
+        print Term::ANSIColor::color("yellow");
+        print "Match at line $pending_match->{line_num}: needed $needed_after after-context, got $available_after (limited by maxline $maxline)\n";
+        print Term::ANSIColor::color("reset");
+      }
+      
+      # Mark as complete with available after-context
+      $pending_match->{after_needed} = 0;
+      $pending_match->{maxline_limited} = 1;  # Flag for debugging/reporting
+    }
+  }
+}
+
+=head2 _force_display_oldest_matches
+
+Forces display of oldest pending matches when queue reaches maximum capacity.
+This prevents memory issues with files containing many matches.
+
+Arguments:
+  - $pending_matches_ref: Reference to pending matches array
+  - $context_buffer_ref: Reference to context buffer
+  - $term: Search pattern for highlighting
+  - $context: Number of context lines
+  - $recently_displayed_ref: Reference to recently displayed matches
+  - $debug: Debug flag
+
+=cut
+
+sub _force_display_oldest_matches {
+  my ($pending_matches_ref, $context_buffer_ref, $term, $context, $recently_displayed_ref, $debug) = @_;
+  
+  # Calculate how many matches to force display (display half to make room)
+  my $matches_to_display = int(@$pending_matches_ref / 2);
+  $matches_to_display = 1 if $matches_to_display < 1;  # Display at least one match
+  
+  if ($debug) {
+    print Term::ANSIColor::color("magenta");
+    print "Force displaying $matches_to_display oldest matches from queue of " . scalar(@$pending_matches_ref) . " matches\n";
+    print Term::ANSIColor::color("reset");
+  }
+  
+  # Sort pending matches by line number to process oldest first
+  my @sorted_matches = sort { $a->{line_num} <=> $b->{line_num} } @$pending_matches_ref;
+  
+  # Display the oldest matches with whatever after-context they have
+  for my $i (0 .. $matches_to_display - 1) {
+    my $match = $sorted_matches[$i];
+    
+    if ($debug) {
+      my $available_after = scalar(@{$match->{after_context}});
+      print Term::ANSIColor::color("magenta");
+      print "Force displaying match at line $match->{line_num} with $available_after after-context lines\n";
+      print Term::ANSIColor::color("reset");
+    }
+    
+    # Prepare match for display with overlapping context handling
+    my $display_match = _prepare_match_for_display($match, \@sorted_matches, $recently_displayed_ref, $context, $debug);
+    
+    # Display the match with available after-context
+    _display_match_with_context(
+      $context_buffer_ref,
+      $display_match->{content},
+      $display_match->{line_num},
+      $term,
+      $context,
+      $display_match->{after_context},
+      $display_match->{optimized_before_context}
+    );
+    
+    # Add to recently displayed matches for future overlap detection
+    push @$recently_displayed_ref, $display_match;
+    
+    # Keep only recent matches to avoid memory growth
+    if (@$recently_displayed_ref > 10) {
+      shift @$recently_displayed_ref;
+    }
+  }
+  
+  # Remove displayed matches from pending queue
+  @$pending_matches_ref = grep {
+    my $match = $_;
+    my $should_keep = 1;
+    for my $i (0 .. $matches_to_display - 1) {
+      if ($match->{line_num} == $sorted_matches[$i]->{line_num}) {
+        $should_keep = 0;
+        last;
+      }
+    }
+    $should_keep;
+  } @$pending_matches_ref;
+  
+  if ($debug) {
+    print Term::ANSIColor::color("magenta");
+    print "Pending matches queue reduced to " . scalar(@$pending_matches_ref) . " matches after force display\n";
+    print Term::ANSIColor::color("reset");
+  }
+}
+
+=head2 _optimize_after_context_for_overlap
+
+Optimizes after-context to avoid duplication with the next match's before-context.
+Maintains proper line numbering and formatting while eliminating redundant lines.
+
+Arguments:
+  - $after_context_ref: Reference to current match's after-context array
+  - $next_match: Next match that has overlapping context
+  - $context: Number of context lines
+  - $debug: Debug flag
+
+Returns:
+  - Reference to optimized after-context array
+
+=cut
+
+sub _optimize_after_context_for_overlap {
+  my ($after_context_ref, $next_match, $context, $debug) = @_;
+  
+  my @optimized_after_context = ();
+  my $next_before_start = $next_match->{line_num} - $context;
+  my $next_match_line = $next_match->{line_num};
+  
+  # Include after-context lines, but handle overlapping lines carefully
+  foreach my $context_line (@$after_context_ref) {
+    # Special case: if the context line is the next match itself, don't include it
+    # as it will be displayed as a match line with proper highlighting
+    if ($context_line->{line_num} == $next_match_line) {
+      if ($debug) {
+        print Term::ANSIColor::color("magenta");
+        print "Skipping next match line $context_line->{line_num} from after-context (will be displayed as match)\n";
+        print Term::ANSIColor::color("reset");
+      }
+    }
+    # Include all other after-context lines - overlapping lines will be displayed here
+    # and removed from the next match's before-context
+    else {
+      push @optimized_after_context, $context_line;
+      if ($context_line->{line_num} >= $next_before_start && $debug) {
+        print Term::ANSIColor::color("magenta");
+        print "Including overlapping line $context_line->{line_num} in after-context (will be removed from next match's before-context)\n";
+        print Term::ANSIColor::color("reset");
+      }
+    }
+  }
+  
+  if ($debug) {
+    my $original_count = scalar(@$after_context_ref);
+    my $optimized_count = scalar(@optimized_after_context);
+    print Term::ANSIColor::color("magenta");
+    print "Optimized after-context for overlap: $original_count -> $optimized_count lines (next match starts context at line $next_before_start)\n";
+    print Term::ANSIColor::color("reset");
+  }
+  
+  return \@optimized_after_context;
+}
+
+=head2 _display_context_line_with_highlighting
+
+Displays a context line with proper formatting and highlighting if it contains matches.
+Ensures match highlighting is preserved in overlapping sections.
+
+Arguments:
+  - $line_num: Line number to display
+  - $content: Line content
+  - $term: Search pattern for highlighting
+
+=cut
+
+sub _display_context_line_with_highlighting {
+  my ($line_num, $content, $term) = @_;
+  
+  buffer_output("[$line_num]\t");
+  
+  # Check if this context line also contains the search pattern
+  my $search_pattern = get_search_pattern();
+  if ($content =~ /$search_pattern/) {
+    # This context line contains a match, highlight it
+    print_str($content, $term);
+  } else {
+    # Regular context line, no highlighting needed
+    buffer_output($content);
+  }
+  
+  buffer_output("\n");
+}
+
 =head2 _display_match_with_context
 
-Displays a match with appropriate context lines from the rolling buffer.
+Displays a match with appropriate context lines from the rolling buffer and after-context.
+Enhanced to preserve match highlighting in overlapping sections.
 
 Arguments:
   - $buffer_ref: Reference to context buffer array
@@ -386,19 +1192,31 @@ Arguments:
   - $match_line_num: Line number of the match
   - $term: Search pattern for highlighting
   - $context: Number of context lines to display
+  - $after_context_ref: Reference to after-context array (optional)
 
 =cut
 
 sub _display_match_with_context {
-  my ($buffer_ref, $match_line, $match_line_num, $term, $context) = @_;
+  my ($buffer_ref, $match_line, $match_line_num, $term, $context, $after_context_ref, $before_context_ref) = @_;
   
   if ($context) {
-    # Display context before match from buffer without re-reading file sections
-    my $start_context_line = $match_line_num - $context;
-    
-    foreach my $entry (@$buffer_ref) {
-      if ($entry->{line_num} >= $start_context_line && $entry->{line_num} < $match_line_num) {
-        buffer_output("[$entry->{line_num}]\t$entry->{content}\n");
+    # Use optimized before-context if provided, otherwise use buffer
+    if ($before_context_ref && @$before_context_ref) {
+      # Display optimized before-context
+      foreach my $entry (@$before_context_ref) {
+        _display_context_line_with_highlighting($entry->{line_num}, $entry->{content}, $term);
+      }
+    } elsif (defined $before_context_ref && @$before_context_ref == 0) {
+      # Optimized before-context is empty, don't display any before-context
+      # This handles the case where overlap optimization removed all before-context
+    } else {
+      # Display context before match from buffer without re-reading file sections
+      my $start_context_line = $match_line_num - $context;
+      
+      foreach my $entry (@$buffer_ref) {
+        if ($entry->{line_num} >= $start_context_line && $entry->{line_num} < $match_line_num) {
+          _display_context_line_with_highlighting($entry->{line_num}, $entry->{content}, $term);
+        }
       }
     }
   } else {
@@ -410,6 +1228,13 @@ sub _display_match_with_context {
   buffer_output("[$match_line_num]\t");
   print_str($match_line, $term);
   buffer_output("\n");
+  
+  # Display after-context if provided with preserved highlighting for overlapping matches
+  if ($context && $after_context_ref && @$after_context_ref) {
+    foreach my $entry (@$after_context_ref) {
+      _display_context_line_with_highlighting($entry->{line_num}, $entry->{content}, $term);
+    }
+  }
   
   if ($context) {
     # Add spacing for context display
