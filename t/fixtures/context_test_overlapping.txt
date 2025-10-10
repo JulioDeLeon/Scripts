@@ -1,0 +1,5 @@
+Line 1: Before first match
+Line 2: function_alpha appears here
+Line 3: Between the two matches
+Line 4: function_beta appears here
+Line 5: After second match

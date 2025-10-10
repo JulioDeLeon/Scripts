@@ -1,0 +1,5 @@
+Line 1: Before context line
+Line 2: Another before context line
+Line 3: This line contains function keyword
+Line 4: After context line
+Line 5: Another after context line

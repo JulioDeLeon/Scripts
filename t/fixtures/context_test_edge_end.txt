@@ -1,0 +1,5 @@
+Line 1: Context before match
+Line 2: More context before
+Line 3: Even more context
+Line 4: Final context before
+function at very end

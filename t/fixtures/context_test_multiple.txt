@@ -1,0 +1,16 @@
+Line 1: Setup code
+Line 2: More setup
+Line 3: function_one definition here
+Line 4: Implementation details
+Line 5: End of function_one
+
+Line 7: Different section
+Line 8: function_two definition here
+Line 9: More implementation
+Line 10: End of function_two
+Line 11: Cleanup code
+
+Line 13: Final section
+Line 14: function_three definition here
+Line 15: Last implementation
+Line 16: Final cleanup
