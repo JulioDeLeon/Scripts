@@ -1,7 +1,8 @@
 #!/usr/bin/env perl
 use strict;
 use warnings;
-use lib 'lib';
+use FindBin qw($RealBin);
+use lib "$RealBin/../lib";
 
 # Import the modular components
 use GF::Help qw(show_usage show_help show_version show_usage_and_exit);
