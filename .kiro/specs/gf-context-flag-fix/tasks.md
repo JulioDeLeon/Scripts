@@ -126,21 +126,21 @@
     - _Requirements: 4.1, 4.2, 4.3, 4.4_
 
 - [ ] 9. Create comprehensive integration tests
-  - [ ] 9.1 Test context flag with other command-line options
+  - [x] 9.1 Test context flag with other command-line options
     - Test context with target patterns (-t)
     - Test context with ignore patterns (-i)
     - Test context with maxline limits (-m)
     - Test context with debug output (-d)
     - _Requirements: 4.4_
 
-  - [ ] 9.2 Test context display formatting and edge cases
+  - [x] 9.2 Test context display formatting and edge cases
     - Test various context values (1, 3, 5, 10)
     - Test context with binary file detection
     - Test context with permission errors
     - Test context with empty and single-line files
     - _Requirements: 1.1, 1.2, 1.3, 1.4, 2.1, 2.2_
 
-  - [ ] 9.3 Write performance benchmarks for context feature
+  - [x] 9.3 Write performance benchmarks for context feature
     - Benchmark context vs non-context performance
     - Test performance with large files and high context values
     - _Requirements: 3.1, 3.2_
