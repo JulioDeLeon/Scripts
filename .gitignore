@@ -1,2 +1,16 @@
 *.swp
 *.idea
+.DS_Store
+
+# Rust build artifacts
+rust_gf/target/
+
+# Haskell build artifacts
+haskell_gf/dist-newstyle/
+haskell_gf/dist/
+
+# Test artifacts
+*.out
+*.sorted
+test_corpus/
+config_test_env/

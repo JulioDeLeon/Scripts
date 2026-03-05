@@ -1,0 +1,28 @@
+cabal-version:      3.14
+name:               haskell-gf
+version:            0.1.0.0
+author:             Julio de Leon
+maintainer:         jangelod@gmail.com
+build-type:         Simple
+
+common warnings
+    ghc-options: -Wall -O2 -threaded -rtsopts
+
+executable haskell-gf
+    import:           warnings
+    main-is:          Main.hs
+    other-modules:    Config
+                    , Search
+    build-depends:    base
+                    , optparse-applicative
+                    , regex-base
+                    , regex-tdfa
+                    , directory
+                    , filepath
+                    , ansi-terminal
+                    , text
+                    , bytestring
+                    , containers
+                    , unliftio
+    hs-source-dirs:   app
+    default-language: Haskell2010
